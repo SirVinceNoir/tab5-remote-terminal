@@ -1,0 +1,10 @@
+# Name,     Type, SubType,  Offset,   Size, Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xf000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+ota_0,      app,  ota_0,    ,         3M,
+ota_1,      app,  ota_1,    ,         3M,
+storage,    data, littlefs, ,         4M,
+# ESP32-C6 coprocessor firmware image, pushed over SDIO via esp_hosted's
+# host-driven OTA API (eh_host_cp_ota_*) -- see wifi_cp_ota.c.
+slave_fw,   data, 0x40,     ,         1408K,

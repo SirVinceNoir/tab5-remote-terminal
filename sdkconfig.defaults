@@ -1,0 +1,33 @@
+# M5Stack Tab5 (ESP32-P4 + ESP32-C6) target defaults
+CONFIG_IDF_TARGET="esp32p4"
+
+# Custom partition table: dual OTA app slots + LittleFS storage
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Flash: Tab5 ships with 16MB QIO flash
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# SPIRAM required for the 1280x720 LVGL framebuffers
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+
+# esp_hosted: the generic P4 default SDIO pinout does NOT match how the Tab5
+# actually wires its on-board ESP32-C6 -- this is what was causing every
+# sdmmc_init_ocr/"card init failed" error against a co-processor that (per
+# the factory demo hosting its own AP) is otherwise perfectly healthy.
+CONFIG_ESP32P4_TAB5_C6_BOARD=y
+CONFIG_CODEC_I2C_BACKWARD_COMPATIBLE=n
+CONFIG_CAM_CTRL_SPI_ENABLE=n
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+
+## LVGL9 (per BSP's own example config)
+CONFIG_LV_CONF_SKIP=y
+CONFIG_LV_BUILD_EXAMPLES=n
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+CONFIG_LV_USE_CLIB_STRING=y

@@ -1,0 +1,21 @@
+dependencies:
+  idf: ">=5.4"
+  espressif/m5stack_tab5:
+    version: "^1.2.0"
+    override_path: "../components/m5stack_tab5"
+  espressif/esp_wifi_remote:
+    version: "^1.6.4"
+  espressif/esp_hosted:
+    version: "^3.0.6"
+  skuodi/libssh2_esp:
+    version: "^1.1.0"
+  espressif/usb_host_cdc_acm:
+    version: "^2.4.0"
+  espressif/usb_host_ch34x_vcp:
+    version: "^2.2.1"
+  espressif/usb_host_cp210x_vcp:
+    version: "^2.2.0"
+  espressif/usb_host_ftdi_vcp:
+    version: "^2.1.1"
+  joltwallet/littlefs:
+    version: "^1.22.3"
