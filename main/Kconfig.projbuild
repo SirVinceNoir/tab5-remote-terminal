@@ -1,20 +1,5 @@
 menu "Tab5 Remote Terminal"
 
-    config TAB5_WIFI_SSID
-        string "WiFi SSID (Phase 2 spike)"
-        default ""
-        help
-            Hardcoded SSID for the Phase 2 WiFi bring-up spike. Set via menuconfig,
-            not committed as a literal in source. Replaced by the real WiFi
-            manager UI in Phase 3.
-
-    config TAB5_WIFI_PASSWORD
-        string "WiFi password (Phase 2 spike)"
-        default ""
-        help
-            Hardcoded password for the Phase 2 WiFi bring-up spike. Set via
-            menuconfig, not committed as a literal in source.
-
     config TAB5_SSH_HOST
         string "SSH test host (Phase 2 spike)"
         default "10.1.3.236"

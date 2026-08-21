@@ -16,6 +16,11 @@ CONFIG_SPIRAM_XIP_FROM_PSRAM=y
 
 CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
 
+# app_main() builds LVGL screens with many widgets directly (ui_shell.c) --
+# the IDF default of 3584 bytes is too thin for that call depth and caused a
+# stack-protection-fault reboot loop the first time a real screen was built.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=12288
+
 # esp_hosted: the generic P4 default SDIO pinout does NOT match how the Tab5
 # actually wires its on-board ESP32-C6 -- this is what was causing every
 # sdmmc_init_ocr/"card init failed" error against a co-processor that (per

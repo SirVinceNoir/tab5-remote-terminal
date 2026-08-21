@@ -179,6 +179,12 @@ static void handle_key_event(uint8_t row, uint8_t col, bool pressed)
         key = key - 'A' + 1;
     }
 
+    if (pressed) {
+        bool printable = key >= 0x20 && key < 0x7F;
+        ESP_LOGI(TAG, "key: 0x%02lX%s%c%s", (unsigned long)key,
+                  printable ? " ('" : "", printable ? (char)key : ' ', printable ? "')" : "");
+    }
+
     kbd_lv_event_t evt = { .key = key, .pressed = pressed };
     xQueueSend(s_lv_event_queue, &evt, 0);
 }
