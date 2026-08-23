@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "esp_wifi_types.h"
 
@@ -28,3 +29,7 @@ bool wifi_manager_connect(const char *ssid, const char *password, uint32_t timeo
 bool wifi_manager_connect_saved(uint32_t timeout_ms);
 
 bool wifi_manager_is_connected(void);
+
+/* If connected, fills ssid_out with the current AP's SSID and returns true.
+ * Returns false (leaving ssid_out untouched) if not connected. */
+bool wifi_manager_get_status(char *ssid_out, size_t ssid_out_len);

@@ -8,6 +8,7 @@
 #include "host_store.h"
 #include "ui_shell.h"
 #include "ui_wifi.h"
+#include "session_ui.h"
 
 static const char *TAG = "tab5_remote_terminal";
 
@@ -31,6 +32,7 @@ void app_main(void)
     lv_indev_t *kbd_indev = keyboard_indev_start();
     ui_shell_init(kbd_indev);
     ui_wifi_init(kbd_indev);
+    session_ui_init();
     ui_shell_show_home();
 
     bsp_display_unlock();
@@ -41,7 +43,7 @@ void app_main(void)
     usb_serial_spike_start();
 
     wifi_manager_init();
-    if (wifi_manager_connect_saved(15000)) {
+    if (wifi_manager_connect_saved(25000)) {
         ssh_spike_start();
     } else {
         ESP_LOGI(TAG, "no saved WiFi credentials (or connect failed) -- "

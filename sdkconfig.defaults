@@ -26,6 +26,15 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=12288
 # sdmmc_init_ocr/"card init failed" error against a co-processor that (per
 # the factory demo hosting its own AP) is otherwise perfectly healthy.
 CONFIG_ESP32P4_TAB5_C6_BOARD=y
+
+# Widened SDIO RX/TX queues and RX staging depth (defaults 20/20/2) -- an
+# attempt at the WiFi-drop/reconnect-auth-failure instability documented as
+# a known rough edge in esp_hosted's P4<->C6 SDIO bridge (RX bursts during
+# association/handshake can overflow the default queues). Experimental
+# tuning, not a confirmed fix -- revisit if it doesn't measurably help.
+CONFIG_ESP_HOSTED_HOST_SDIO_TX_Q_SIZE=32
+CONFIG_ESP_HOSTED_HOST_SDIO_RX_Q_SIZE=32
+CONFIG_ESP_HOSTED_HOST_SDIO_RX_STAGING_SLOTS=4
 CONFIG_CODEC_I2C_BACKWARD_COMPATIBLE=n
 CONFIG_CAM_CTRL_SPI_ENABLE=n
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
@@ -36,3 +45,13 @@ CONFIG_LV_BUILD_EXAMPLES=n
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_SPRINTF=y
 CONFIG_LV_USE_CLIB_STRING=y
+
+# 16x16 monospace bitmap font for the terminal widget's 80x42 cell grid
+# (main/terminal.c) -- native panel resolution, no scaling needed.
+CONFIG_LV_FONT_UNSCII_16=y
+
+# Bumped from the default 14px for easier touch targets during testing
+# (paired with the 1.5x padding/gap/width bump in ui_shell.c/ui_wifi.c) --
+# revisit properly in a real design pass later.
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_DEFAULT_MONTSERRAT_20=y

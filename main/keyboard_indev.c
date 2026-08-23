@@ -126,6 +126,13 @@ static TaskHandle_t s_kbd_task;
 static QueueHandle_t s_lv_event_queue;
 static bool s_sym_held, s_aa_held, s_ctrl_held, s_alt_held;
 static uint32_t s_last_key;
+static keyboard_raw_key_cb_t s_raw_cb;
+
+void keyboard_indev_set_raw_cb(keyboard_raw_key_cb_t cb)
+{
+    ESP_LOGI(TAG, "raw key callback %s", cb != NULL ? "enabled" : "disabled");
+    s_raw_cb = cb;
+}
 
 static esp_err_t kbd_read_reg(uint8_t reg, uint8_t *data, size_t len)
 {
@@ -171,6 +178,12 @@ static void handle_key_event(uint8_t row, uint8_t col, bool pressed)
         return;
     }
 
+    /* Raw (terminal) mode wants a literal Tab byte, not LVGL's "move focus
+     * to the next widget" meaning for that same physical key. */
+    if (s_raw_cb != NULL && key == LV_KEY_NEXT && m.keycode == 0x2B) {
+        key = '\t';
+    }
+
     /* Ctrl+letter -> control character (matches terminal convention), since
      * LVGL widgets have no separate "ctrl held" concept for plain keys. */
     if (s_ctrl_held && key >= 'a' && key <= 'z') {
@@ -183,6 +196,11 @@ static void handle_key_event(uint8_t row, uint8_t col, bool pressed)
         bool printable = key >= 0x20 && key < 0x7F;
         ESP_LOGI(TAG, "key: 0x%02lX%s%c%s", (unsigned long)key,
                   printable ? " ('" : "", printable ? (char)key : ' ', printable ? "')" : "");
+    }
+
+    if (s_raw_cb != NULL) {
+        s_raw_cb(key, pressed);
+        return;
     }
 
     kbd_lv_event_t evt = { .key = key, .pressed = pressed };

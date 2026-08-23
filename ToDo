@@ -1,0 +1,3 @@
+Add a system menu for things like brightness, sleep times and theme 
+Do a design pass, take insperation from termius and the old HA dashboard we built
+Build a credentials manager for usernames, passwords and ssh keys

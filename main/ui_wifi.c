@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "wifi_manager.h"
+#include "wifi_creds.h"
 #include "ui_shell.h"
 #include "ui_wifi.h"
 
@@ -37,12 +38,21 @@ typedef struct {
 static void connect_task(void *arg)
 {
     connect_args_t *args = (connect_args_t *)arg;
-    bool ok = wifi_manager_connect(args->ssid, args->password, 15000);
+    /* 5 retries at ~2.6s apart (the event handler's own backoff) can already
+     * take ~13s before a real handshake even starts under weak signal -- a
+     * tight 15s budget risked declaring failure moments before the connection
+     * actually completed (observed: "failed to connect" followed by "got IP"
+     * under a second later). */
+    bool ok = wifi_manager_connect(args->ssid, args->password, 25000);
 
     bsp_display_lock(0);
     if (ok) {
         ui_shell_show_home();
-    } else if (s_status_label != NULL) {
+    } else if (lv_obj_is_valid(s_status_label)) {
+        /* Validity check, not just non-NULL -- the user may have navigated
+         * away from this screen (it's since been auto-deleted) while this
+         * connect attempt was still in flight; touching a freed label here
+         * crashed with a Load access fault before this check was added. */
         lv_label_set_text(s_status_label, "Connect failed -- check the password and try again");
     }
     bsp_display_unlock();
@@ -62,7 +72,7 @@ static void start_connect(const char *ssid, const char *password)
     strncpy(args->ssid, ssid, sizeof(args->ssid) - 1);
     strncpy(args->password, password, sizeof(args->password) - 1);
 
-    if (s_status_label != NULL) {
+    if (lv_obj_is_valid(s_status_label)) {
         lv_label_set_text_fmt(s_status_label, "Connecting to '%s'...", ssid);
     }
 
@@ -80,9 +90,19 @@ static void ap_row_click_cb(lv_event_t *e)
     const wifi_ap_record_t *ap = &s_scan_results[index];
     if (ap->authmode == WIFI_AUTH_OPEN) {
         start_connect((const char *)ap->ssid, "");
-    } else {
-        show_password_screen(index);
+        return;
     }
+
+    /* Already have saved creds for this exact network (from any previous
+     * successful connect, here or at boot) -- reconnect directly instead of
+     * asking for a password we already have. */
+    const wifi_network_t *saved = wifi_creds_find((const char *)ap->ssid);
+    if (saved != NULL) {
+        start_connect((const char *)ap->ssid, saved->password);
+        return;
+    }
+
+    show_password_screen(index);
 }
 
 static void scan_task(void *arg)
@@ -91,6 +111,13 @@ static void scan_task(void *arg)
     s_scan_count = count;
 
     bsp_display_lock(0);
+    if (!lv_obj_is_valid(s_list_container) || !lv_obj_is_valid(s_status_label)) {
+        /* User navigated away (screen auto-deleted) while the scan was
+         * still running -- nothing to update. */
+        bsp_display_unlock();
+        vTaskDelete(NULL);
+        return;
+    }
     lv_obj_clean(s_list_container);
 
     if (count == 0) {
@@ -129,8 +156,8 @@ static void show_scan_screen(void)
 {
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(scr, 12, 0);
-    lv_obj_set_style_pad_gap(scr, 8, 0);
+    lv_obj_set_style_pad_all(scr, 18, 0);
+    lv_obj_set_style_pad_gap(scr, 12, 0);
 
     lv_group_t *old_group = s_group;
     s_group = lv_group_create();
@@ -138,7 +165,7 @@ static void show_scan_screen(void)
     lv_obj_t *top_bar = lv_obj_create(scr);
     lv_obj_set_size(top_bar, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(top_bar, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_gap(top_bar, 8, 0);
+    lv_obj_set_style_pad_gap(top_bar, 12, 0);
     lv_obj_set_style_pad_all(top_bar, 0, 0);
 
     lv_obj_t *title = lv_label_create(top_bar);
@@ -164,9 +191,9 @@ static void show_scan_screen(void)
     lv_obj_set_size(s_list_container, LV_PCT(100), LV_PCT(100));
     lv_obj_set_flex_grow(s_list_container, 1);
     lv_obj_set_flex_flow(s_list_container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_gap(s_list_container, 4, 0);
+    lv_obj_set_style_pad_gap(s_list_container, 6, 0);
 
-    lv_screen_load(scr);
+    lv_screen_load_anim(scr, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);
     lv_indev_set_group(s_kbd_indev, s_group);
 
     if (old_group != NULL) {
@@ -197,8 +224,8 @@ static void show_password_screen(int ap_index)
 
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(scr, 12, 0);
-    lv_obj_set_style_pad_gap(scr, 8, 0);
+    lv_obj_set_style_pad_all(scr, 18, 0);
+    lv_obj_set_style_pad_gap(scr, 12, 0);
 
     lv_group_t *old_group = s_group;
     s_group = lv_group_create();
@@ -220,7 +247,7 @@ static void show_password_screen(int ap_index)
     lv_obj_set_size(btn_row, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_all(btn_row, 0, 0);
-    lv_obj_set_style_pad_gap(btn_row, 8, 0);
+    lv_obj_set_style_pad_gap(btn_row, 12, 0);
 
     lv_obj_t *connect_btn = lv_button_create(btn_row);
     lv_obj_t *connect_lbl = lv_label_create(connect_btn);
@@ -234,7 +261,7 @@ static void show_password_screen(int ap_index)
     lv_group_add_obj(s_group, cancel_btn);
     lv_obj_add_event_cb(cancel_btn, pw_cancel_btn_click_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_screen_load(scr);
+    lv_screen_load_anim(scr, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);
     lv_indev_set_group(s_kbd_indev, s_group);
 
     if (old_group != NULL) {

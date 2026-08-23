@@ -1,6 +1,19 @@
 #pragma once
 
+#include <stdbool.h>
+#include <stdint.h>
 #include "lvgl.h"
+
+/*
+ * Raw key callback: bypasses the LVGL indev/group/focus path entirely.
+ * While one is registered, every keypress (Tab included, delivered as a
+ * literal '\t' instead of LV_KEY_NEXT) goes straight to the callback and is
+ * NOT also enqueued for the LVGL indev -- used by the terminal session
+ * screen, which wants raw bytes, not form-navigation semantics. Pass NULL
+ * to go back to normal LVGL keypad behavior.
+ */
+typedef void (*keyboard_raw_key_cb_t)(uint32_t key, bool pressed);
+void keyboard_indev_set_raw_cb(keyboard_raw_key_cb_t cb);
 
 /*
  * Phase 3: the real LVGL keypad input device for the A164 keyboard,

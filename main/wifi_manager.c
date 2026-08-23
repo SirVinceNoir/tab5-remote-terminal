@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
+#include "esp_timer.h"
 #include "bsp/esp-bsp.h"
 #include "wifi_manager.h"
 #include "wifi_cp_ota.h"
@@ -17,6 +18,7 @@ static const char *TAG = "wifi_manager";
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 #define MAX_RETRY          5
+#define RECONNECT_DELAY_US (5ULL * 1000 * 1000) /* between spontaneous-drop retries */
 
 static bool s_inited;
 static EventGroupHandle_t s_event_group;
@@ -24,6 +26,13 @@ static SemaphoreHandle_t s_op_mutex; /* serializes scan/connect -- both touch th
 static int s_retry_num;
 static bool s_connecting;
 static bool s_is_connected;
+static esp_timer_handle_t s_reconnect_timer;
+
+static void reconnect_timer_cb(void *arg)
+{
+    ESP_LOGI(TAG, "attempting to reconnect...");
+    esp_wifi_connect();
+}
 
 static void event_handler(void *arg, esp_event_base_t event_base,
                            int32_t event_id, void *event_data)
@@ -36,6 +45,18 @@ static void event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGW(TAG, "retrying connection to AP (%d/%d)", s_retry_num, MAX_RETRY);
         } else if (s_connecting) {
             xEventGroupSetBits(s_event_group, WIFI_FAIL_BIT);
+        } else {
+            /* Spontaneous drop well after we were already up and running --
+             * out of range, an AP hiccup, interference. Without this, any
+             * such drop was permanent until the user manually reconnected
+             * via the WiFi screen, which read as "WiFi is unreliable" when
+             * really nothing was ever retrying. Keep trying at a fixed
+             * interval (not a tight loop) since this is a personal network
+             * that isn't going anywhere. */
+            ESP_LOGW(TAG, "WiFi connection dropped -- will retry in %llu s",
+                      RECONNECT_DELAY_US / 1000000ULL);
+            esp_timer_stop(s_reconnect_timer); /* no-op if not already running */
+            esp_timer_start_once(s_reconnect_timer, RECONNECT_DELAY_US);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
@@ -74,13 +95,31 @@ void wifi_manager_init(void)
 
     wifi_cp_ota_update_if_needed(); /* no-ops or restarts the host -- see wifi_cp_ota.c */
 
+    wifi_creds_init();
+
     s_event_group = xEventGroupCreate();
     s_op_mutex = xSemaphoreCreateMutex();
+
+    const esp_timer_create_args_t reconnect_timer_args = {
+        .callback = reconnect_timer_cb,
+        .name = "wifi_reconnect",
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&reconnect_timer_args, &s_reconnect_timer));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    /* Every disconnect logged so far has been reason=200 (BEACON_TIMEOUT) at
+     * decent signal strength (-57 to -63 dBm) -- not a weak-signal pattern.
+     * Modem sleep's periodic doze/wake cycle is a well-known cause of missed
+     * beacons on ESP32 in general, and doubly a risk here: the radio's
+     * sleep/wake scheduling lives on the C6 co-processor while we coordinate
+     * with it over an SDIO RPC bridge, an extra hop of latency/jitter a
+     * normal single-chip WiFi setup wouldn't have. Disabling power save
+     * trades a bit of extra draw for the radio never missing a beacon. */
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
     s_inited = true;
 }
@@ -163,19 +202,33 @@ bool wifi_manager_connect(const char *ssid, const char *password, uint32_t timeo
 
 bool wifi_manager_connect_saved(uint32_t timeout_ms)
 {
-    char ssid[WIFI_CREDS_SSID_MAX_LEN + 1] = { 0 };
-    char password[WIFI_CREDS_PASSWORD_MAX_LEN + 1] = { 0 };
-
-    if (wifi_creds_load(ssid, sizeof(ssid), password, sizeof(password)) != ESP_OK) {
+    const wifi_network_t *net = wifi_creds_get(0); /* most recently used */
+    if (net == NULL) {
         ESP_LOGI(TAG, "no saved WiFi credentials -- use the WiFi screen to connect");
         return false;
     }
 
-    ESP_LOGI(TAG, "attempting saved SSID '%s'", ssid);
-    return wifi_manager_connect(ssid, password, timeout_ms);
+    ESP_LOGI(TAG, "attempting saved SSID '%s'", net->ssid);
+    return wifi_manager_connect(net->ssid, net->password, timeout_ms);
 }
 
 bool wifi_manager_is_connected(void)
 {
     return s_is_connected;
+}
+
+bool wifi_manager_get_status(char *ssid_out, size_t ssid_out_len)
+{
+    if (!s_is_connected) {
+        return false;
+    }
+    wifi_ap_record_t info;
+    if (esp_wifi_sta_get_ap_info(&info) != ESP_OK) {
+        return false;
+    }
+    if (ssid_out != NULL && ssid_out_len > 0) {
+        strncpy(ssid_out, (const char *)info.ssid, ssid_out_len - 1);
+        ssid_out[ssid_out_len - 1] = '\0';
+    }
+    return true;
 }
